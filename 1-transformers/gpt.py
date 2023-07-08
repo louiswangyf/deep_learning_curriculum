@@ -4,21 +4,6 @@ import torch.nn.functional as F
 from config import GPTConfig
 import math
 
-class PositionEncoding(nn.Module):
-    def __init__(self,max_len, n_embd):
-        self.pe = nn.Embedding(max_len, n_embd)
-    
-    def forward(self,x, device):
-        """
-        inputs:
-        - x : 3D input [batch size, sequence length, embedding dimension]
-        
-        output:
-        - position embedding for the sequence length 
-        """
-        _, seq_len, _ = x.size()
-        pos = torch.arange(0,seq_len, dtype=torch.long, device=device)
-        return x + self.ps(pos)
 
 class MultiHeadedAttention(nn.Module):
     def __init__(self, config):
@@ -85,5 +70,56 @@ class Block(nn.Module):
         x = x + self.attn(self.ln_1(x))
         x = x + self.mlp(self.ln_2(x))
         return x
+
+class GPT(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        assert config.vocab_size is not None
+        assert config.block_size is not None
+        self.config = config
+
+        self.transformer = nn.ModuleDict(dict(
+            wte = nn.Embedding(config.vocab_size, config.n_embd),
+            wpe = nn.Embedding(config.block_size, config.n_embd),
+            drop = nn.Dropout(config.dropout),
+            h = nn.ModuleList([Block(config for _ in range(config.n_layer))]),
+            ln_f = nn.Layernorm(config.n_embd),
+        ))
+        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=config.bias)
+        # init all weights
+        self.apply(self._init_weights)
+        # apply special scaled init to the residual projections, per GPT-2 paper
+        for pn, p in self.named_parameters():
+            if pn.endswith('c_proj.weight'):
+                torch.nn.init.normal_(p, mean=0.0, std=0.02/math.sqrt(2 * config.n_layer))
+
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Embedding):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+        
+    def forward(self,idx, targets=None):
+        device = idx.deviceb,t = idx.size()
+        pos = torch.arange(0, t, dtype=torch.long, device=device)
+        tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
+        pos_emb = self.transformer.wpe(pos)
+        x = self.transformer.drop(tok_emb+pos_emb)
+        for block in self.transformer.h:
+            x = block(x)
+        x = self.transformer.ln_f(x)
+
+        if targets is not None:
+            logits = self.lm_head(x)
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+        else: 
+            # inference time mini optimization: only forwsrd to the last position
+            logits = self.lm_head(x[:,[-1],:])
+            loss = None
+        return logits, loss
+    
+
 
 

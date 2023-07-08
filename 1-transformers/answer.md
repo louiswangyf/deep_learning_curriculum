@@ -1,0 +1,9 @@
+## What is different architecturally from the Transformer, vs a normal RNN, like an LSTM? (Specifically, how are recurrence and time managed?) 
+Transformer doesn't have long-term dependencies, and have no issues for gradient vanishing problems. The distance between any two tokens is 1. However, for RNN or LSTM, it is easy to have gradient vanishing problems, and the distance is around o(N). Transformer attend all tokens in parallel, while for RNN, the token needs to wait for the previous hidden states in a sequential manner.
+## Attention is defined as, Attention(Q,K,V) = softmax(QK^T/sqrt(d_k))V. What are the dimensions for Q, K, and V? Why do we use this setup? What other combinations could we do with (Q,K) that also output weights?
+The dimension is the token embedding dimension divided by number of heads, which is for multihead attention.  The dot product of K and Q represents the similarities, and softmax operation ensures that the attention weights are normalized and well-distributed. The denominator provides a stable and robust training, otherwise there would be gradient exploding as the value of dot product will be large if the dimension is high.<br>
+As for the other combination of (Q,K), there are dot product, scaled dot product, additive attention with FFN, and multiplicative attention with element-wise product.
+## Are the dense layers different at each multi-head attention block? Why or why not?
+Yes. This allows the model to capture different aspects and relationships in parallel within the input data by introducing diversity in the learned parameters.
+## Why do we have so many skip connections, especially connecting the input of an attention function to the output? Intuitively, what if we didn't?
+The skip connections are called residual network, playing an important role in the transformer models. The residual network ( x+mlp(x)) addresses gradient vanishing problems and facilitates better information flow throughout the network.
